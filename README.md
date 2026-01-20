@@ -1,4 +1,4 @@
-## B. Perancangan Sistem
+# B. Perancangan Sistem (BISA BERUBAH)
 
 ### 1. Pengguna Sistem (User & Hak Akses)
 
@@ -109,6 +109,7 @@ Fitur utama yang dirancang dalam sistem ini meliputi:
 | Field       | Tipe                  |
 | ----------- | --------------------- |
 | id          | bigint                |
+| item_id     | bigint                |
 | rfid_uid    | varchar               |
 | nama_piring | varchar               |
 | harga       | integer               |
@@ -152,6 +153,18 @@ Fitur utama yang dirancang dalam sistem ini meliputi:
 | snap_token        | varchar |
 | payment_status    | varchar |
 | timestamps        |         |
+
+---
+
+### 6. items (makanan & minuman)
+| Field      | Tipe                   |
+| ---------- | ---------------------- |
+| id         | bigint                 |
+| nama_item  | varchar                |
+| kategori   | enum(makanan, minuman) |
+| harga      | integer                |
+| status     | enum(aktif, nonaktif)  |
+| timestamps |                        |
 
 ---
 
