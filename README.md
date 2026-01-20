@@ -196,6 +196,10 @@ Fitur utama yang dirancang dalam sistem ini meliputi:
 * ERD database
 * Sequence Diagram pembayaran Midtrans
 
+#### d. ERD Database
+![ERD Database](./img_github/database_RFID.jpeg)
+
+
 ---
 
 
