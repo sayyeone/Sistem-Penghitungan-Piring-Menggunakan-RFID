@@ -17,7 +17,7 @@ return new class extends Migration
             $table->string('rfid_uid');
             $table->string('nama_piring');
             $table->integer('harga');
-            $table->enum('status', [0,1]); // 0 = sedang habis | 1 = tersedia
+            $table->enum('status', ['0', '1']); // 0 = sedang habis | 1 = tersedia
             $table->timestamps();
 
             $table->foreign('item_id')->references('id')->on('items'); // Foreign Key

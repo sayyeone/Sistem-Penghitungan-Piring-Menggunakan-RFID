@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Models\plate;
 
 class item extends Model
 {
@@ -14,4 +15,8 @@ class item extends Model
         'harga',
         'status'
     ];
+
+    public function plates(){
+        return $this->hasMany(plate::class);
+    }
 }
