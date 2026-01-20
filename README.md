@@ -197,3 +197,11 @@ Fitur utama yang dirancang dalam sistem ini meliputi:
 * Sequence Diagram pembayaran Midtrans
 
 ---
+
+
+1. users
+2. items
+3. plates
+4. transactions
+5. transaction_details
+6. payments
