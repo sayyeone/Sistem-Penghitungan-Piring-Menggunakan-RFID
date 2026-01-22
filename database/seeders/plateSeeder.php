@@ -18,7 +18,7 @@ class plateSeeder extends Seeder
         foreach ($items as $item) {
             for ($i = 1; $i <= 5; $i++) {
                 $item->plates()->create([
-                    'rfid_uid'   => $item->id . '-RFID-' . $i,
+                    'rfid_uid'   => 'R' . $item->id . '00' . $i,
                     'nama_piring'=> $item->nama_item,
                     'harga'      => $item->harga,
                     'status'     => '1',
