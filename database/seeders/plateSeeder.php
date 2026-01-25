@@ -14,15 +14,15 @@ class plateSeeder extends Seeder
     public function run(): void
     {
         $items = item::all();
+        $counter = 2023001;
 
-        foreach ($items as $item) {
-            for ($i = 1; $i <= 5; $i++) {
+        foreach ($items as $item){
+            for ($i = 1; $i <= 5; $i++){
                 $item->plates()->create([
-                    'rfid_uid'   => 'R' . $item->id . '00' . $i,
-                    'nama_piring'=> $item->nama_item,
-                    'harga'      => $item->harga,
-                    'status'     => '1',
+                    'rfid_uid' => $counter,
+                    'status' => '1'
                 ]);
+                $counter++;
             }
         }
     }

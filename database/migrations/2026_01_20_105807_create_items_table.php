@@ -16,7 +16,7 @@ return new class extends Migration
             $table->string('nama_item');
             $table->enum('kategori', ['makanan', 'minuman', 'dessert', 'camilan', 'paket', 'tambahan'])->default('makanan');
             $table->integer('harga');
-            $table->enum('status', [0,1])->default(1); // 0 = sedang habis | 1 = tersedia
+            $table->enum('status', ['0','1'])->default('1'); // 0 = sedang habis | 1 = tersedia
             $table->timestamps();
         });
     }
