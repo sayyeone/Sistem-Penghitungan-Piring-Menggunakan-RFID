@@ -3,23 +3,26 @@
 namespace Database\Factories;
 
 use App\Models\item;
+use App\Models\plate;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Models\item>
+ * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Models\Plate>
  */
-class ItemFactory extends Factory
+class PlateFactory extends Factory
 {
     /**
      * Define the model's default state.
      *
      * @return array<string, mixed>
      */
+
     public function definition(): array
     {
         return [
-            'nama_item' => $this->faker->word,
-            'harga' => 10000
+            'item_id' => item::factory(),
+            'rfid_uid' => $this->faker->unique()->uuid,
+            'status' => 1
         ];
     }
 }
