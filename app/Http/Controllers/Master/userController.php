@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Master;
 
 use App\Models\User;
-use Nette\Utils\Json;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use App\Http\Controllers\Controller;
@@ -25,9 +24,7 @@ class userController extends Controller
                 'status' => true,
                 'message' => 'Data berhasil didapatkan',
                 'data' => UserResource::collection($user),
-            ],
-            200,
-        );
+            ],200);
     }
 
     /**
@@ -47,9 +44,7 @@ class userController extends Controller
                     'status' => false,
                     'message' => 'Validasi gagal!',
                     'errors' => $validator->errors(),
-                ],
-                422,
-            );
+                ],422);
         }
 
         $user = User::create([
@@ -65,9 +60,7 @@ class userController extends Controller
                 'status' => true,
                 'message' => 'user berhasil Ditambahkan',
                 'data' => new UserResource($user),
-            ],
-            201,
-        );
+            ],201);
     }
 
     /**
@@ -82,9 +75,7 @@ class userController extends Controller
                 [
                     'status' => false,
                     'message' => 'User tidak ditemukan!',
-                ],
-                404,
-            );
+                ],404);
         }
 
         return response()->json(
@@ -92,9 +83,7 @@ class userController extends Controller
                 'status' => true,
                 'message' => 'User ditemukan!',
                 'data' => new UserResource($user),
-            ],
-            200,
-        );
+            ],200);
     }
 
     /**
@@ -109,9 +98,7 @@ class userController extends Controller
                 [
                     'status' => false,
                     'message' => 'User tidak ditemukan!',
-                ],
-                404,
-            );
+                ],404);
         }
 
         $validator = Validator::make($request->all(), [
@@ -126,9 +113,7 @@ class userController extends Controller
                     'status' => false,
                     'message' => 'Validasi gagal!',
                     'errors' => $validator->errors(),
-                ],
-                422,
-            );
+                ],422);
         }
 
         $user->name = $request->name;
@@ -149,9 +134,7 @@ class userController extends Controller
                 'status' => true,
                 'message' => 'User berhasil diperbarui',
                 'data' => new UserResource($user),
-            ],
-            200,
-        );
+            ],200);
     }
 
     /**
@@ -166,9 +149,7 @@ class userController extends Controller
                 [
                     'status' => false,
                     'message' => 'User tidak ditemukan!',
-                ],
-                404,
-            );
+                ],404);
         }
 
         $user->status = '0';
@@ -178,8 +159,6 @@ class userController extends Controller
             [
                 'status' => true,
                 'message' => 'user berhasil Dinonaktifkan!',
-            ],
-            200,
-        );
+            ],200);
     }
 }
