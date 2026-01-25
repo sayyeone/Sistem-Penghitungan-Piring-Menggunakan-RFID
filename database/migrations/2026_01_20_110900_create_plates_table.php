@@ -20,7 +20,7 @@ return new class extends Migration
             $table->enum('status', [0,1])->default(1); // 0 = sedang habis | 1 = tersedia
             $table->timestamps();
 
-            $table->foreign('item_id')->references('id')->on('items'); // Foreign Key
+            $table->foreign('item_id')->references('id')->on('items')->cascadeOnDelete(); // Foreign Key
         });
     }
 
