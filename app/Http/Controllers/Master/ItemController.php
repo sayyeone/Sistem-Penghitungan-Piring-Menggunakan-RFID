@@ -16,7 +16,7 @@ class ItemController extends Controller
     public function index()
     {
         // mengambil semua data berdasarkan terbaru
-        $item = item::latest()->get();
+        $item = item::orderBy('status', 'desc')->orderBy('kategori', 'asc')->orderBy('nama_item', 'asc')->get();
 
         return response()->json([
             'status' => true,
