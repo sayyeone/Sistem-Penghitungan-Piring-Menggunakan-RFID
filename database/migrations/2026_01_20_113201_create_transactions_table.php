@@ -15,7 +15,7 @@ return new class extends Migration
             $table->id();
             $table->unsignedBigInteger('user_id'); // FOREIGN KEY table = 'user'
             $table->integer('total_harga');
-            $table->enum('status', ['pending', 'paid', 'failed']);
+            $table->enum('status', ['pending', 'paid', 'failed'])->default('pending');
             $table->string('payment_type');
             $table->timestamps();
 
