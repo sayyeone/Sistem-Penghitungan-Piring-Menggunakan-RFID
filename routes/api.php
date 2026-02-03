@@ -16,4 +16,8 @@ Route::prefix('transaction')->group(function () {
 
     Route::post('/start', [transactionController::class, 'makeTransaction']);
     Route::post('/scan/{id}', [transactionController::class, 'scanTransaction']);
+
+    Route::post('/{id}/pay', [transactionController::class, 'payTransaction']);
+    Route::post('/midtrans/callback', [transactionController::class, 'midtransCallback']);
+
 });
