@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\transaction;
 use Illuminate\Database\Eloquent\Model;
 
 class payment extends Model
@@ -14,4 +15,8 @@ class payment extends Model
         'snap_token',
         'payment_status'
     ];
+
+    public function transaction(){
+        return $this->belongsTo(transaction::class);
+    }
 }
