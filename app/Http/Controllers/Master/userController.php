@@ -15,16 +15,46 @@ class userController extends Controller
     /**
      * Display a listing of the resource.
      */
-    public function index()
+    public function index(Request $request)
     {
-        $user = User::where('status', '1')->get();
+        $perPage = $request->input('per_page', 10);
+        $search = $request->input('search');
+        $role = $request->input('role');
+
+        // Build query with search and filter
+        $query = User::query(); // Show all users, not just active
+
+        // Search by name or email
+        if ($search) {
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                    ->orWhere('email', 'like', "%{$search}%");
+            });
+        }
+
+        // Filter by role
+        if ($role && $role !== 'all') {
+            $query->where('role', $role);
+        }
+
+        $users = $query->paginate($perPage);
 
         return response()->json(
             [
                 'status' => true,
                 'message' => 'Data berhasil didapatkan',
-                'data' => UserResource::collection($user),
-            ],200);
+                'data' => UserResource::collection($users->items()),
+                'meta' => [
+                    'current_page' => $users->currentPage(),
+                    'last_page' => $users->lastPage(),
+                    'per_page' => $users->perPage(),
+                    'total' => $users->total(),
+                    'from' => $users->firstItem(),
+                    'to' => $users->lastItem(),
+                ]
+            ],
+            200
+        );
     }
 
     /**
@@ -44,15 +74,17 @@ class userController extends Controller
                     'status' => false,
                     'message' => 'Validasi gagal!',
                     'errors' => $validator->errors(),
-                ],422);
+                ],
+                422
+            );
         }
 
         $user = User::create([
             'name' => $request->name,
             'email' => $request->email,
-            'role' => $request->role,
+            'role' => $request->role ?? 'kasir',
             'password' => Hash::make($request->password),
-            'status' => '1',
+            'status' => $request->status ?? '1',
         ]);
 
         return response()->json(
@@ -60,7 +92,9 @@ class userController extends Controller
                 'status' => true,
                 'message' => 'user berhasil Ditambahkan',
                 'data' => new UserResource($user),
-            ],201);
+            ],
+            201
+        );
     }
 
     /**
@@ -75,7 +109,9 @@ class userController extends Controller
                 [
                     'status' => false,
                     'message' => 'User tidak ditemukan!',
-                ],404);
+                ],
+                404
+            );
         }
 
         return response()->json(
@@ -83,7 +119,9 @@ class userController extends Controller
                 'status' => true,
                 'message' => 'User ditemukan!',
                 'data' => new UserResource($user),
-            ],200);
+            ],
+            200
+        );
     }
 
     /**
@@ -98,7 +136,9 @@ class userController extends Controller
                 [
                     'status' => false,
                     'message' => 'User tidak ditemukan!',
-                ],404);
+                ],
+                404
+            );
         }
 
         $validator = Validator::make($request->all(), [
@@ -113,7 +153,9 @@ class userController extends Controller
                     'status' => false,
                     'message' => 'Validasi gagal!',
                     'errors' => $validator->errors(),
-                ],422);
+                ],
+                422
+            );
         }
 
         $user->name = $request->name;
@@ -121,6 +163,10 @@ class userController extends Controller
 
         if ($request->filled('role')) {
             $user->role = $request->role;
+        }
+
+        if ($request->filled('status')) {
+            $user->status = $request->status;
         }
 
         if ($request->filled('password')) {
@@ -134,7 +180,9 @@ class userController extends Controller
                 'status' => true,
                 'message' => 'User berhasil diperbarui',
                 'data' => new UserResource($user),
-            ],200);
+            ],
+            200
+        );
     }
 
     /**
@@ -142,14 +190,16 @@ class userController extends Controller
      */
     public function destroy(string $id)
     {
-        $user = User::where('id', $id)->where('status', '1')->first();
+        $user = User::find($id); // Don't filter by status
 
         if (!$user) {
             return response()->json(
                 [
                     'status' => false,
                     'message' => 'User tidak ditemukan!',
-                ],404);
+                ],
+                404
+            );
         }
 
         $user->status = '0';
@@ -159,6 +209,8 @@ class userController extends Controller
             [
                 'status' => true,
                 'message' => 'user berhasil Dinonaktifkan!',
-            ],200);
+            ],
+            200
+        );
     }
 }

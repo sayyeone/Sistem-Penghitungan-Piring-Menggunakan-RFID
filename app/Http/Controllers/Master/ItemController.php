@@ -13,15 +13,43 @@ class ItemController extends Controller
     /**
      * Display a listing of the resource.
      */
-    public function index()
+    public function index(Request $request)
     {
-        // mengambil semua data berdasarkan terbaru
-        $item = item::orderBy('status', 'desc')->orderBy('kategori', 'asc')->orderBy('nama_item', 'asc')->get();
+        $perPage = $request->input('per_page', 10);
+        $search = $request->input('search');
+        $kategori = $request->input('kategori');
+
+        // Build query with search and filter
+        $query = item::query();
+
+        // Search by item name
+        if ($search) {
+            $query->where('nama_item', 'like', "%{$search}%");
+        }
+
+        // Filter by kategori
+        if ($kategori && $kategori !== 'all') {
+            $query->where('kategori', $kategori);
+        }
+
+        // Order and paginate
+        $items = $query->orderBy('status', 'desc')
+            ->orderBy('kategori', 'asc')
+            ->orderBy('nama_item', 'asc')
+            ->paginate($perPage);
 
         return response()->json([
             'status' => true,
             'message' => 'Data Berhasil Diambil!',
-            'data' => ItemResource::collection($item) // collection diguanakn ketika data berupa array
+            'data' => ItemResource::collection($items->items()),
+            'meta' => [
+                'current_page' => $items->currentPage(),
+                'last_page' => $items->lastPage(),
+                'per_page' => $items->perPage(),
+                'total' => $items->total(),
+                'from' => $items->firstItem(),
+                'to' => $items->lastItem(),
+            ]
         ], 200);
     }
 
@@ -32,13 +60,14 @@ class ItemController extends Controller
     {
 
         // validasi input $request sebelum diinsertkan
-        $validator = Validator::make($request->all(),[
+        $validator = Validator::make($request->all(), [
             'nama_item' => 'required|string|min:2|max:50',
-            'harga' => 'required|integer'
+            'harga' => 'required|integer',
+            'kategori' => 'required|in:makanan,minuman,dessert,camilan,paket,tambahan'
         ]);
 
         // respon json bila gagal validasi
-        if($validator->fails()){
+        if ($validator->fails()) {
             return response()->json([
                 'status' => false,
                 'message' => 'Semua Form wajib diisi!',
@@ -66,7 +95,7 @@ class ItemController extends Controller
         $item = item::find($id);
 
         // respon bila item tidak ditemukan
-        if(!$item){
+        if (!$item) {
             return response()->json([
                 'status' => false,
                 'message' => 'Item tidak ditemukan!'
@@ -90,7 +119,7 @@ class ItemController extends Controller
         $item = item::find($id);
 
         // respon bila tidak ditemukan
-        if(!$item){
+        if (!$item) {
             return response()->json([
                 'status' => false,
                 'message' => 'Item tidak ditemukan!'
@@ -98,13 +127,14 @@ class ItemController extends Controller
         }
 
         // validasi input $request sebelum diupdate
-        $validator = Validator::make($request->all(),[
+        $validator = Validator::make($request->all(), [
             'nama_item' => 'required|string|min:2|max:50',
-            'harga' => 'required|integer'
+            'harga' => 'required|integer',
+            'kategori' => 'required|in:makanan,minuman,dessert,camilan,paket,tambahan'
         ]);
 
         // respon json bila gagal validasi
-        if($validator->fails()){
+        if ($validator->fails()) {
             return response()->json([
                 'status' => false,
                 'message' => 'Semua Form wajib diisi!',
@@ -114,7 +144,8 @@ class ItemController extends Controller
 
         $item->update($request->only([
             'nama_item',
-            'harga'
+            'harga',
+            'kategori'
         ]));
 
         return response()->json([
@@ -133,7 +164,7 @@ class ItemController extends Controller
         $item = item::find($id);
 
         // respon bila tidak ditemukan
-        if(!$item){
+        if (!$item) {
             return response()->json([
                 'status' => false,
                 'message' => 'Item tidak ditemukan!'
@@ -143,7 +174,7 @@ class ItemController extends Controller
         $item->delete();
 
         return response()->json([
-            'status'=> true,
+            'status' => true,
             'message' => 'Item Berhasil DIhapus!',
         ], 200);
     }

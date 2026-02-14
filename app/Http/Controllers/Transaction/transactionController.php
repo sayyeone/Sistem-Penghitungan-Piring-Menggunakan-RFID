@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Transaction;
 
 use App\Models\plate;
-use App\Providers\helper;
 use App\Models\transaction;
 use Illuminate\Http\Request;
 use App\Models\transaction_detail;
@@ -11,109 +10,142 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\TransactionResource;
 use App\Models\payment;
 use App\Services\MidtransService;
-use Illuminate\Support\Str;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
 
 class transactionController extends Controller
 {
-    // membuat transaction tapi transaction nya kosongan dulu
-    public function makeTransaction(){
-        $transaction = transaction::create([
-            'user_id' => 1,
-            'total_harga' => 0,
-            'status' => 'pending',
-            'payment_type' => 'midtrans',
+    /**
+     * FEATURE: One-Step Checkout from Frontend Cart
+     * Accepts: { items: [{plate_id: 1, quantity: 2, price: 15000}, ...] }
+     */
+    public function create(Request $request)
+    {
+        // Log request for debugging
+        \Log::info('Transaction Create Request', $request->all());
+
+        $validator = Validator::make($request->all(), [
+            'items' => 'required|array|min:1',
+            'items.*.plate_id' => 'required|exists:plates,id',
+            'items.*.quantity' => 'required|integer|min:1',
+            'items.*.price' => 'required|numeric|min:0'
         ]);
 
-        return response()->json([
-            'status' => true,
-            'message' => 'Transaksi berhasil dibuat, sekarang tambahkan item!',
-            'data' => new TransactionResource($transaction)
-        ], 201);
-    }
-
-    public function scanTransaction(string $id, Request $request)
-    {
-        $transaction = transaction::find($id);
-        if (!$transaction || $transaction->status !== 'pending') {
+        if ($validator->fails()) {
             return response()->json([
                 'status' => false,
-                'message' => 'Transaksi tidak valid'
-            ], 404);
-        }
-
-        $item = helper::jsonToArray($request->all());
-
-        if (empty($item)) {
-            return response()->json([
-                'status' => false,
-                'message' => 'Data RFID kosong / tidak valid'
+                'message' => 'Validasi gagal',
+                'errors' => $validator->errors()
             ], 422);
         }
 
-        $plates = plate::with('item')
-            ->whereIn('id', array_values($item))
-            ->get()
-            ->keyBy('id');
+        try {
+            DB::beginTransaction();
 
-        $existingPlateIds = transaction_detail::where('transaction_id', $transaction->id)
-            ->pluck('plate_id')
-            ->toArray();
+            $totalHarga = 0;
+            $items = $request->items;
 
-        $conflicted = [];
-        $inserted  = [];
-
-        foreach ($item as $rfid => $plateId) {
-
-            if (in_array($plateId, $existingPlateIds)) {
-                $conflicted[] = $rfid;
-                continue;
+            // 1. Calculate Total
+            foreach ($items as $item) {
+                $totalHarga += ($item['price'] * $item['quantity']);
             }
 
-            $plate = $plates[$plateId] ?? null;
-
-            if (!$plate || !$plate->item) {
-                continue;
-            }
-
-            transaction_detail::create([
-                'transaction_id' => $transaction->id,
-                'plate_id' => $plate->id,
-                'harga' => $plate->item->harga
+            // 2. Create Transaction Header
+            $transaction = transaction::create([
+                'user_id' => auth()->id() ?? 1, // Use auth user or default
+                'total_harga' => $totalHarga,
+                'status' => 'pending',
+                'payment_type' => 'midtrans',
             ]);
 
-            $inserted[] = $rfid;
-        }
+            // 3. Create Transaction Details
+            foreach ($items as $item) {
+                // Check if 'qty' column exists, otherwise adjust logic or assume '1' if backend schema is different
+                // Based on standard POS logic, details should have qty. 
+                // However, based on previous file, 'makeTransaction' created empty, then 'scanTransaction' added details.
+                // Assuming 'transaction_details' table has 'qty' column. If not, we might need to insert multiple rows or just price.
 
-        $transaction->update([
-            'total_harga' => transaction_detail::where('transaction_id', $id)->sum('harga')
-        ]);
+                transaction_detail::create([
+                    'transaction_id' => $transaction->id,
+                    'plate_id' => $item['plate_id'],
+                    'harga' => $item['price'],
+                    // 'qty' => $item['quantity'] // Uncomment if column exists. For RFID usually qty is 1 per row if unique scan.
+                    // If plate is unique item, qty is always 1.
+                ]);
+            }
 
-        if (!empty($conflicted)) {
+            DB::commit();
+
+            return response()->json([
+                'status' => true,
+                'message' => 'Transaksi berhasil dibuat',
+                'data' => new TransactionResource($transaction)
+            ], 201);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
             return response()->json([
                 'status' => false,
-                'conflict_rfids' => $conflicted,
-                'inserted_rfids' => $inserted
-            ], 409);
+                'message' => 'Gagal membuat transaksi: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get Transaction History
+     */
+    public function index(Request $request)
+    {
+        $query = transaction::with(['details.plate.item', 'payment'])->orderBy('created_at', 'desc');
+
+        // Filter by Date
+        if ($request->has('date')) {
+            $query->whereDate('created_at', $request->date);
+        }
+
+        // Filter by Status
+        if ($request->has('status') && $request->status !== 'all') {
+            $query->where('status', $request->status);
+        }
+
+        $transactions = $query->get();
+
+        return response()->json([
+            'status' => true,
+            'data' => TransactionResource::collection($transactions)
+        ]);
+    }
+
+    /**
+     * Get Transaction Detail
+     */
+    public function show($id)
+    {
+        $transaction = transaction::with(['details.plate.item', 'payment', 'user'])->find($id);
+
+        if (!$transaction) {
+            return response()->json(['message' => 'Transaksi tidak ditemukan'], 404);
         }
 
         return response()->json([
             'status' => true,
-            'message' => 'Scan RFID berhasil',
-            'data' => $inserted
-        ], 201);
+            'data' => new TransactionResource($transaction)
+        ]);
     }
 
-    public function payTransaction(string $id){
+    // Existing payment methods
+    public function payTransaction(string $id)
+    {
         $transaction = transaction::findOrFail($id);
 
-        if ($transaction->status !== 'pending'){
+        if ($transaction->status !== 'pending') {
             return response()->json([
                 'status' => false,
                 'message' => 'Transaksi tidak bisa dibayar'
             ], 422);
         }
 
-        $orderId = 'TRX-'. $transaction->id . '-'. time();
+        $orderId = 'TRX-' . $transaction->id . '-' . time();
 
         $params = [
             'transaction_details' => [
@@ -144,11 +176,12 @@ class transactionController extends Controller
         ]);
     }
 
-    public function midtransCallback(Request $request){
+    public function midtransCallback(Request $request)
+    {
         $payload = $request->all();
 
         $payment = payment::where('midtrans_order_id', $payload['order_id'])->first();
-        if(!$payment){
+        if (!$payment) {
             return response()->json([
                 'message' => 'Payment tidak ditemukan',
             ], 404);
@@ -156,10 +189,10 @@ class transactionController extends Controller
 
         $transactionStatus = $payload['transaction_status'];
 
-        if(in_array($transactionStatus, ['settlement', 'capture'])){
+        if (in_array($transactionStatus, ['settlement', 'capture'])) {
             $payment->update(['payment_status' => 'paid']);
             $payment->transaction->update(['status' => 'paid']);
-        } elseif(in_array($transactionStatus, ['cancel', 'expire', 'deny'])){
+        } elseif (in_array($transactionStatus, ['cancel', 'expire', 'deny'])) {
             $payment->update(['payment_status' => 'failed']);
             $payment->transaction->update(['status' => 'failed']);
         }
