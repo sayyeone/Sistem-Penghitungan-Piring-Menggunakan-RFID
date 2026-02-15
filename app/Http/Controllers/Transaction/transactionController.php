@@ -9,9 +9,11 @@ use App\Models\transaction_detail;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\TransactionResource;
 use App\Models\payment;
+use App\Models\ActivityLog;
 use App\Services\MidtransService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Auth;
 
 class transactionController extends Controller
 {
@@ -192,9 +194,30 @@ class transactionController extends Controller
         if (in_array($transactionStatus, ['settlement', 'capture'])) {
             $payment->update(['payment_status' => 'paid']);
             $payment->transaction->update(['status' => 'paid']);
+
+            // Log successful transaction
+            ActivityLog::create([
+                'user_id' => $payment->transaction->user_id,
+                'action' => 'paid',
+                'model' => 'Transaction',
+                'model_id' => $payment->transaction_id,
+                'description' => "Pembayaran berhasil untuk transaksi #{$payment->transaction_id} sebesar Rp " . number_format($payment->transaction->total_harga, 0, ',', '.'),
+                'properties' => ['amount' => $payment->transaction->total_harga, 'order_id' => $payload['order_id']]
+            ]);
+
         } elseif (in_array($transactionStatus, ['cancel', 'expire', 'deny'])) {
             $payment->update(['payment_status' => 'failed']);
             $payment->transaction->update(['status' => 'failed']);
+
+            // Log failed transaction
+            ActivityLog::create([
+                'user_id' => $payment->transaction->user_id,
+                'action' => 'failed',
+                'model' => 'Transaction',
+                'model_id' => $payment->transaction_id,
+                'description' => "Pembayaran gagal/kadaluwarsa untuk transaksi #{$payment->transaction_id}",
+                'properties' => ['status' => $transactionStatus, 'order_id' => $payload['order_id']]
+            ]);
         }
 
         return response()->json([

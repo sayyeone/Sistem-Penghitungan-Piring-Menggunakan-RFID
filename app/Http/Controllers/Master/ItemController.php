@@ -5,8 +5,10 @@ namespace App\Http\Controllers\Master;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\ItemResource;
 use App\Models\item;
+use App\Models\ActivityLog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Auth;
 
 class ItemController extends Controller
 {
@@ -59,7 +61,21 @@ class ItemController extends Controller
     public function store(Request $request)
     {
 
-        // validasi input $request sebelum diinsertkan
+        // Normalize name to Title Case for comparison
+        $normalizedName = ucwords(strtolower($request->nama_item));
+
+        // Manually check for unique name to provide better feedback
+        $existing = item::where('nama_item', $normalizedName)->first();
+        if ($existing) {
+            return response()->json([
+                'status' => false,
+                'message' => "Menu '{$normalizedName}' sudah ada dalam daftar.",
+                'existing_id' => $existing->id,
+                'errors' => ['nama_item' => ["Nama item ini sudah digunakan."]]
+            ], 422);
+        }
+
+        // Standard validation for other fields
         $validator = Validator::make($request->all(), [
             'nama_item' => 'required|string|min:2|max:50',
             'harga' => 'required|integer',
@@ -70,13 +86,26 @@ class ItemController extends Controller
         if ($validator->fails()) {
             return response()->json([
                 'status' => false,
-                'message' => 'Semua Form wajib diisi!',
+                'message' => $validator->errors()->first(),
                 'errors' => $validator->errors(),
             ], 422);
         }
 
+        // Normalize name to Title Case
+        $data = $request->all();
+        $data['nama_item'] = ucwords(strtolower($request->nama_item));
+
         // menginsertkan item ke tabel database
-        $item = item::create($request->all());
+        $item = item::create($data);
+
+        ActivityLog::create([
+            'user_id' => Auth::id(),
+            'action' => 'created',
+            'model' => 'Item',
+            'model_id' => $item->id,
+            'description' => "Menambahkan item baru: {$item->nama_item} ({$item->kategori})",
+            'properties' => $request->all()
+        ]);
 
         // respon bila data berhasil diinsertkan
         return response()->json([
@@ -126,7 +155,24 @@ class ItemController extends Controller
             ], 404);
         }
 
-        // validasi input $request sebelum diupdate
+        // Normalize name to Title Case for comparison
+        $normalizedName = ucwords(strtolower($request->nama_item));
+
+        // Manually check for unique name (excluding current item)
+        $existing = item::where('nama_item', $normalizedName)
+            ->where('id', '!=', $id)
+            ->first();
+
+        if ($existing) {
+            return response()->json([
+                'status' => false,
+                'message' => "Menu '{$normalizedName}' sudah ada dalam daftar.",
+                'existing_id' => $existing->id,
+                'errors' => ['nama_item' => ["Nama item ini sudah digunakan."]]
+            ], 422);
+        }
+
+        // Standard validation for other fields
         $validator = Validator::make($request->all(), [
             'nama_item' => 'required|string|min:2|max:50',
             'harga' => 'required|integer',
@@ -137,16 +183,31 @@ class ItemController extends Controller
         if ($validator->fails()) {
             return response()->json([
                 'status' => false,
-                'message' => 'Semua Form wajib diisi!',
+                'message' => $validator->errors()->first(),
                 'errors' => $validator->errors(),
             ], 422);
         }
 
-        $item->update($request->only([
+        $data = $request->only([
             'nama_item',
             'harga',
             'kategori'
-        ]));
+        ]);
+
+        if (isset($data['nama_item'])) {
+            $data['nama_item'] = ucwords(strtolower($data['nama_item']));
+        }
+
+        $item->update($data);
+
+        ActivityLog::create([
+            'user_id' => Auth::id(),
+            'action' => 'updated',
+            'model' => 'Item',
+            'model_id' => $item->id,
+            'description' => "Memperbarui data item: {$item->nama_item}",
+            'properties' => $request->all()
+        ]);
 
         return response()->json([
             'status' => true,
@@ -171,7 +232,16 @@ class ItemController extends Controller
             ], 404);
         }
 
+        $name = $item->nama_item;
         $item->delete();
+
+        ActivityLog::create([
+            'user_id' => Auth::id(),
+            'action' => 'deleted',
+            'model' => 'Item',
+            'model_id' => $id,
+            'description' => "Menghapus item: {$name}"
+        ]);
 
         return response()->json([
             'status' => true,

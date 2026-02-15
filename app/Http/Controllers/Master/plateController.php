@@ -4,11 +4,13 @@ namespace App\Http\Controllers\Master;
 
 use App\Models\plate;
 use App\Models\item;
+use App\Models\ActivityLog;
 use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\PlateResource;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Auth;
 
 class plateController extends Controller
 {
@@ -23,12 +25,14 @@ class plateController extends Controller
         // Build query with search
         $query = plate::query();
 
-        // Search by RFID UID or plate name
+        // Search by RFID UID or item name
         if ($search) {
-            $query->where(function ($q) use ($search) {
-                $q->where('rfid_uid', 'like', "%{$search}%")
-                    ->orWhere('name', 'like', "%{$search}%");
-            });
+            $query->join('items', 'plates.item_id', '=', 'items.id')
+                ->where(function ($q) use ($search) {
+                    $q->where('plates.rfid_uid', 'like', "%{$search}%")
+                        ->orWhere('items.nama_item', 'like', "%{$search}%");
+                })
+                ->select('plates.*');
         }
 
         // Order and paginate
@@ -72,14 +76,24 @@ class plateController extends Controller
             DB::beginTransaction();
 
             $itemId = $request->item_id;
+            $name = $request->name ? ucwords(strtolower($request->name)) : null;
+            $price = $request->price;
 
-            // Auto-create item if name/price provided
-            if (!$itemId) {
+            // If item_id is not provided but name is, check if item with that name already exists
+            if (!$itemId && $name) {
+                $existingItem = item::where('nama_item', $name)->first();
+                if ($existingItem) {
+                    $itemId = $existingItem->id;
+                }
+            }
+
+            // Auto-create item if name/price provided and no item_id found
+            if (!$itemId && $name) {
                 // Using 'item' model (lowercase per file scan)
                 $newItem = item::create([
-                    'nama_item' => $request->name,
-                    'harga' => $request->price,
-                    'kategori' => 'General',
+                    'nama_item' => $name,
+                    'harga' => $price,
+                    'kategori' => 'tambahan', // Changed from 'General' to valid ENUM value
                     'status' => '1'
                 ]);
                 $itemId = $newItem->id;
@@ -89,6 +103,15 @@ class plateController extends Controller
                 'item_id' => $itemId,
                 'rfid_uid' => $request->rfid_uid,
                 'status' => '1'
+            ]);
+
+            ActivityLog::create([
+                'user_id' => Auth::id(),
+                'action' => 'created',
+                'model' => 'Plate',
+                'model_id' => $plate->id,
+                'description' => "Menambahkan plate baru dengan RFID: {$plate->rfid_uid}",
+                'properties' => ['rfid_uid' => $plate->rfid_uid]
             ]);
 
             DB::commit();
@@ -156,25 +179,89 @@ class plateController extends Controller
             ], 404);
         }
 
-        $plate->update($request->only('rfid_uid', 'status'));
+        $validator = Validator::make($request->all(), [
+            'rfid_uid' => 'sometimes|unique:plates,rfid_uid,' . $id,
+            'item_id' => 'sometimes|exists:items,id',
+            'name' => 'sometimes|string',
+            'price' => 'sometimes|numeric',
+            'status' => 'sometimes|in:0,1'
+        ]);
 
-        // Update Item info if name/price provided
-        if ($request->has('name') || $request->has('price')) {
-            $item = item::find($plate->item_id);
-            if ($item) {
-                if ($request->has('name'))
-                    $item->nama_item = $request->name;
-                if ($request->has('price'))
-                    $item->harga = $request->price;
-                $item->save();
-            }
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Validasi gagal!',
+                'errors' => $validator->errors()
+            ], 422);
         }
 
-        return response()->json([
-            'status' => true,
-            'message' => 'Plate berhasil diperbarui!',
-            'data' => new PlateResource($plate)
-        ], 200);
+        try {
+            DB::beginTransaction();
+
+            // 1. Update RFID and Status if provided
+            if ($request->has('rfid_uid'))
+                $plate->rfid_uid = $request->rfid_uid;
+            if ($request->has('status'))
+                $plate->status = $request->status;
+
+            // 2. Handle Item Linking Re-logic
+            $itemId = $request->item_id;
+            $name = $request->has('name') ? ucwords(strtolower($request->name)) : null;
+            $price = $request->price;
+
+            // Option A: Direct item_id link
+            if ($itemId) {
+                $plate->item_id = $itemId;
+            }
+            // Option B: Name/Price provided (Handle correction or new item creation)
+            else if ($name) {
+                // Check if item with this name already exists
+                $existingItem = item::where('nama_item', $name)->first();
+
+                if ($existingItem) {
+                    // Update its price if it's the target and price is provided
+                    if ($price) {
+                        $existingItem->update(['harga' => $price]);
+                    }
+                    $plate->item_id = $existingItem->id;
+                } else {
+                    // Create new item for this plate (mistake correction/custom)
+                    $newItem = item::create([
+                        'nama_item' => $name,
+                        'harga' => $price ?? 0,
+                        'kategori' => 'tambahan',
+                        'status' => '1'
+                    ]);
+                    $plate->item_id = $newItem->id;
+                }
+            }
+
+            $plate->save();
+
+            ActivityLog::create([
+                'user_id' => Auth::id(),
+                'action' => 'updated',
+                'model' => 'Plate',
+                'model_id' => $plate->id,
+                'description' => "Memperbarui data plate RFID: {$plate->rfid_uid}",
+                'properties' => $request->all()
+            ]);
+
+            DB::commit();
+
+            return response()->json([
+                'status' => true,
+                'message' => 'Plate berhasil diperbarui!',
+                'data' => new PlateResource($plate)
+            ], 200);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'status' => false,
+                'message' => 'Gagal memperbarui plate: ' . $e->getMessage()
+            ], 500);
+        }
     }
 
     public function destroy(string $id)
@@ -188,7 +275,16 @@ class plateController extends Controller
             ], 404);
         }
 
+        $rfid = $plate->rfid_uid;
         $plate->delete();
+
+        ActivityLog::create([
+            'user_id' => Auth::id(),
+            'action' => 'deleted',
+            'model' => 'Plate',
+            'model_id' => $id,
+            'description' => "Menghapus plate RFID: {$rfid}"
+        ]);
 
         return response()->json([
             'status' => true,

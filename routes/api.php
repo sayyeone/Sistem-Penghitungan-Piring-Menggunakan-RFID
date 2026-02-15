@@ -6,6 +6,7 @@ use App\Http\Controllers\Master\plateController;
 use App\Http\Controllers\Master\userController;
 use App\Http\Controllers\Transaction\transactionController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\DashboardExportController;
 use Illuminate\Support\Facades\Route;
 
 // Auth routes
@@ -35,4 +36,6 @@ Route::prefix('dashboard')->group(function () {
     Route::get('/revenue', [DashboardController::class, 'getRevenue']);
     Route::get('/popular-plates', [DashboardController::class, 'getPopularPlates']);
     Route::get('/recent-transactions', [DashboardController::class, 'getRecentTransactions']);
+    Route::get('/activities', [DashboardController::class, 'getActivities']);
+    Route::get('/export', [DashboardExportController::class, 'export']);
 });
