@@ -147,16 +147,24 @@ class transactionController extends Controller
             ], 422);
         }
 
+        // Check if midtrans key is set
+        if (!config('services.midtrans.server_key')) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Integrasi Midtrans belum dikonfigurasi (Server Key missing)'
+            ], 500);
+        }
+
         $orderId = 'TRX-' . $transaction->id . '-' . time();
 
         $params = [
             'transaction_details' => [
                 'order_id' => $orderId,
-                'gross_amount' => $transaction->total_harga
+                'gross_amount' => (int) $transaction->total_harga
             ],
             'customer_details' => [
                 'first_name' => $transaction->user->name ?? 'Customer',
-                'email' => $transaction->user->email ?? 'user@gamil.com'
+                'email' => $transaction->user->email ?? 'user@gmail.com'
             ]
         ];
 
@@ -190,9 +198,13 @@ class transactionController extends Controller
         }
 
         $transactionStatus = $payload['transaction_status'];
+        $paymentType = $payload['payment_type'] ?? 'unknown';
 
         if (in_array($transactionStatus, ['settlement', 'capture'])) {
-            $payment->update(['payment_status' => 'paid']);
+            $payment->update([
+                'payment_status' => 'paid',
+                'payment_method' => $paymentType
+            ]);
             $payment->transaction->update(['status' => 'paid']);
 
             // Log successful transaction
@@ -201,12 +213,15 @@ class transactionController extends Controller
                 'action' => 'paid',
                 'model' => 'Transaction',
                 'model_id' => $payment->transaction_id,
-                'description' => "Pembayaran berhasil untuk transaksi #{$payment->transaction_id} sebesar Rp " . number_format($payment->transaction->total_harga, 0, ',', '.'),
-                'properties' => ['amount' => $payment->transaction->total_harga, 'order_id' => $payload['order_id']]
+                'description' => "Pembayaran ({$paymentType}) berhasil untuk transaksi #{$payment->transaction_id} sebesar Rp " . number_format($payment->transaction->total_harga, 0, ',', '.'),
+                'properties' => ['amount' => $payment->transaction->total_harga, 'order_id' => $payload['order_id'], 'type' => $paymentType]
             ]);
 
         } elseif (in_array($transactionStatus, ['cancel', 'expire', 'deny'])) {
-            $payment->update(['payment_status' => 'failed']);
+            $payment->update([
+                'payment_status' => 'failed',
+                'payment_method' => $paymentType
+            ]);
             $payment->transaction->update(['status' => 'failed']);
 
             // Log failed transaction
@@ -215,8 +230,8 @@ class transactionController extends Controller
                 'action' => 'failed',
                 'model' => 'Transaction',
                 'model_id' => $payment->transaction_id,
-                'description' => "Pembayaran gagal/kadaluwarsa untuk transaksi #{$payment->transaction_id}",
-                'properties' => ['status' => $transactionStatus, 'order_id' => $payload['order_id']]
+                'description' => "Pembayaran ({$paymentType}) gagal/kadaluwarsa untuk transaksi #{$payment->transaction_id}",
+                'properties' => ['status' => $transactionStatus, 'order_id' => $payload['order_id'], 'type' => $paymentType]
             ]);
         }
 

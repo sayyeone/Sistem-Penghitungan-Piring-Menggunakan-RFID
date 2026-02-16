@@ -13,10 +13,12 @@ class payment extends Model
         'transaction_id',
         'midtrans_order_id',
         'snap_token',
-        'payment_status'
+        'payment_status',
+        'payment_method'
     ];
 
-    public function transaction(){
+    public function transaction()
+    {
         return $this->belongsTo(transaction::class);
     }
 }

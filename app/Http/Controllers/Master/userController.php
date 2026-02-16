@@ -65,7 +65,7 @@ class userController extends Controller
         $validator = Validator::make($request->all(), [
             'name' => 'required|string|max:100',
             'email' => 'required|email|unique:users,email',
-            'password' => 'required|min:8',
+            'password' => 'required|min:6',
         ]);
 
         if ($validator->fails()) {
@@ -102,7 +102,7 @@ class userController extends Controller
      */
     public function show(string $id)
     {
-        $user = User::where('id', $id)->where('status', '1')->first();
+        $user = User::find($id);
 
         if (!$user) {
             return response()->json(
@@ -129,7 +129,7 @@ class userController extends Controller
      */
     public function update(Request $request, string $id)
     {
-        $user = User::where('id', $id)->where('status', '1')->first();
+        $user = User::find($id);
 
         if (!$user) {
             return response()->json(
@@ -144,7 +144,7 @@ class userController extends Controller
         $validator = Validator::make($request->all(), [
             'name' => 'required|string|max:100',
             'email' => ['required', 'email', Rule::unique('users', 'email')->ignore($user->id)],
-            'password' => 'nullable|min:8',
+            'password' => 'nullable|min:6',
         ]);
 
         if ($validator->fails()) {
