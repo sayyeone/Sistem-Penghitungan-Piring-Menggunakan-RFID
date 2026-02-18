@@ -129,6 +129,12 @@ class transactionController extends Controller
             return response()->json(['message' => 'Transaksi tidak ditemukan'], 404);
         }
 
+        // Auto-sync for Localhost/Railway Fallback
+        if ($transaction->status === 'pending' && $transaction->payment) {
+            $this->syncWithMidtrans($transaction);
+            $transaction->refresh();
+        }
+
         return response()->json([
             'status' => true,
             'data' => new TransactionResource($transaction)
