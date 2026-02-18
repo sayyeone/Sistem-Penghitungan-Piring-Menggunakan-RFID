@@ -7,12 +7,13 @@ RUN apt-get update && apt-get install -y \
     libfreetype6-dev \
     libzip-dev \
     libicu-dev \
+    libonig-dev \
     zip \
     unzip \
     git \
     curl \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install gd zip pdo pdo_mysql bcmath intl \
+    && docker-php-ext-install gd zip pdo pdo_mysql bcmath intl mbstring \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Composer
