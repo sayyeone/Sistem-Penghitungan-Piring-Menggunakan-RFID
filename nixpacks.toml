@@ -1,2 +1,7 @@
 [phases.setup]
 nixPkgs = ["php", "phpExtensions.gd"]
+
+[phases.build]
+cmds = [
+  "composer install --no-dev --optimize-autoloader"
+]
