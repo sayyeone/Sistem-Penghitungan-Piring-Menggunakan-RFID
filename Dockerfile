@@ -3,8 +3,9 @@ FROM php:8.2-fpm
 # Install system deps
 RUN apt-get update && apt-get install -y \
     libpng-dev \
-    libjpeg-dev \
+    libjpeg62-turbo-dev \
     libfreetype6-dev \
+    libzip-dev \
     zip \
     unzip \
     git \
