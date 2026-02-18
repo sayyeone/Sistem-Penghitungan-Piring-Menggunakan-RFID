@@ -155,6 +155,19 @@ class transactionController extends Controller
             ], 500);
         }
 
+        // Reuse existing pending payment to avoid duplicate Order IDs in Midtrans
+        $existingPayment = payment::where('transaction_id', $transaction->id)
+            ->where('payment_status', 'pending')
+            ->first();
+
+        if ($existingPayment) {
+            return response()->json([
+                'status' => true,
+                'snap_token' => $existingPayment->snap_token,
+                'order_id' => $existingPayment->midtrans_order_id,
+            ]);
+        }
+
         $orderId = 'TRX-' . $transaction->id . '-' . time();
 
         $params = [
@@ -164,20 +177,23 @@ class transactionController extends Controller
             ],
             'customer_details' => [
                 'first_name' => $transaction->user->name ?? 'Customer',
-                'email' => $transaction->user->email ?? 'user@gmail.com'
+                'email' => $transaction->user->email ?? 'customer@example.com'
+            ],
+            // Explicitly set notification URL to ensure Midtrans knows where to send
+            'callbacks' => [
+                'finish' => config('app.url') . '/history',
+                'notification_url' => config('app.url') . '/api/payment/midtrans/callback'
             ]
         ];
 
         $snapToken = MidtransService::createSnapToken($params);
 
-        $payment = payment::updateOrCreate(
-            ['transaction_id' => $transaction->id],
-            [
-                'midtrans_order_id' => $orderId,
-                'snap_token' => $snapToken,
-                'payment_status' => 'pending'
-            ]
-        );
+        payment::create([
+            'transaction_id' => $transaction->id,
+            'midtrans_order_id' => $orderId,
+            'snap_token' => $snapToken,
+            'payment_status' => 'pending'
+        ]);
 
         return response()->json([
             'status' => true,
@@ -188,57 +204,95 @@ class transactionController extends Controller
 
     public function midtransCallback(Request $request)
     {
-        $payload = $request->all();
+        MidtransService::init();
 
-        $payment = payment::where('midtrans_order_id', $payload['order_id'])->first();
-        if (!$payment) {
-            return response()->json([
-                'message' => 'Payment tidak ditemukan',
-            ], 404);
+        try {
+            // SDK automatically handles signature verification (Security)
+            $notif = new \Midtrans\Notification();
+        } catch (\Exception $e) {
+            \Log::error('Midtrans Callback Error: ' . $e->getMessage());
+            return response()->json(['message' => 'Invalid notification'], 400);
         }
 
-        $transactionStatus = $payload['transaction_status'];
-        $paymentType = $payload['payment_type'] ?? 'unknown';
+        $payload = $notif->getResponse();
+        \Log::info('Midtrans Notification:', (array) $payload);
 
-        if (in_array($transactionStatus, ['settlement', 'capture'])) {
-            $payment->update([
-                'payment_status' => 'paid',
-                'payment_method' => $paymentType
+        $orderId = $notif->order_id;
+        $transactionStatus = $notif->transaction_status;
+        $paymentType = $notif->payment_type;
+        $fraudStatus = $notif->fraud_status;
+
+        $payment = payment::where('midtrans_order_id', $orderId)->first();
+
+        if (!$payment) {
+            return response()->json(['message' => 'Payment tidak ditemukan'], 404);
+        }
+
+        $isSuccess = false;
+
+        // Robust Success Logic for Production
+        if ($transactionStatus == 'capture') {
+            if ($paymentType == 'credit_card') {
+                if ($fraudStatus != 'challenge') {
+                    $isSuccess = true;
+                }
+            }
+        } elseif ($transactionStatus == 'settlement') {
+            $isSuccess = true;
+        }
+
+        if ($isSuccess) {
+            $payment->update(['payment_status' => 'paid']);
+            $payment->transaction->update([
+                'status' => 'paid',
+                'payment_type' => $paymentType
             ]);
-            $payment->transaction->update(['status' => 'paid']);
 
-            // Log successful transaction
             ActivityLog::create([
                 'user_id' => $payment->transaction->user_id,
                 'action' => 'paid',
                 'model' => 'Transaction',
                 'model_id' => $payment->transaction_id,
-                'description' => "Pembayaran ({$paymentType}) berhasil untuk transaksi #{$payment->transaction_id} sebesar Rp " . number_format($payment->transaction->total_harga, 0, ',', '.'),
-                'properties' => ['amount' => $payment->transaction->total_harga, 'order_id' => $payload['order_id'], 'type' => $paymentType]
+                'description' => "Pembayaran ({$paymentType}) berhasil dikonfirmasi.",
+                'properties' => ['order_id' => $orderId, 'amount' => $payment->transaction->total_harga]
             ]);
-
         } elseif (in_array($transactionStatus, ['cancel', 'expire', 'deny'])) {
-            $payment->update([
-                'payment_status' => 'failed',
-                'payment_method' => $paymentType
-            ]);
+            $payment->update(['payment_status' => 'failed']);
             $payment->transaction->update(['status' => 'failed']);
-
-            // Log failed transaction
-            ActivityLog::create([
-                'user_id' => $payment->transaction->user_id,
-                'action' => 'failed',
-                'model' => 'Transaction',
-                'model_id' => $payment->transaction_id,
-                'description' => "Pembayaran ({$paymentType}) gagal/kadaluwarsa untuk transaksi #{$payment->transaction_id}",
-                'properties' => ['status' => $transactionStatus, 'order_id' => $payload['order_id'], 'type' => $paymentType]
-            ]);
         }
 
-        return response()->json([
-            'status' => true
-        ]);
+        return response()->json(['status' => true]);
     }
 
+    /**
+     * Helper to sync status for Localhost or missed callbacks
+     */
+    private function syncWithMidtrans($transaction)
+    {
+        try {
+            MidtransService::init();
+            $status = \Midtrans\Transaction::status($transaction->payment->midtrans_order_id);
+            $res = (array) $status;
 
+            $transactionStatus = $res['transaction_status'] ?? null;
+            $paymentType = $res['payment_type'] ?? null;
+            $fraudStatus = $res['fraud_status'] ?? 'accept';
+
+            $isSuccess = false;
+            if ($transactionStatus == 'capture') {
+                if ($paymentType == 'credit_card' && $fraudStatus != 'challenge') {
+                    $isSuccess = true;
+                }
+            } elseif ($transactionStatus == 'settlement') {
+                $isSuccess = true;
+            }
+
+            if ($isSuccess && $transaction->status !== 'paid') {
+                $transaction->payment->update(['payment_status' => 'paid']);
+                $transaction->update(['status' => 'paid', 'payment_type' => $paymentType]);
+            }
+        } catch (\Exception $e) {
+            \Log::error("Manual Sync Failed (#{$transaction->id}): " . $e->getMessage());
+        }
+    }
 }

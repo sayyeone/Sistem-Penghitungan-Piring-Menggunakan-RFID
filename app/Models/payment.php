@@ -13,8 +13,7 @@ class payment extends Model
         'transaction_id',
         'midtrans_order_id',
         'snap_token',
-        'payment_status',
-        'payment_method'
+        'payment_status'
     ];
 
     public function transaction()
