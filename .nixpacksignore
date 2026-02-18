@@ -1,6 +1,0 @@
-package.json
-package-lock.json
-vite.config.js
-node_modules
-resources/js
-resources/css
